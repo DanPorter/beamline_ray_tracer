@@ -40,6 +40,7 @@ Version History:
 import sys, os
 import numpy as np
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
 
 from . import functions_general as fg
 from . import functions_tracer as ft

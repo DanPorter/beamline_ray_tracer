@@ -106,7 +106,7 @@ class CurvedMirrorVertical(Component):
     """
     def __init__(self, name, position, normal, radius, n_elements=31, length=1, width=1):
         xyz, dxdydz = ft.curved_mirror(position, normal, radius, width, n_elements, False)
-        element_width = radius * 2 * np.arcsin(width / (2 * radius)) / n_elements
+        element_width = radius * 2 * np.arcsin(width / (2 * radius)) / (n_elements-1)
         elements = []
         for n in range(n_elements):
             element = Reflector(name + ': plate%d' % n, xyz[n], dxdydz[n], element_width, length, [0, 1, 0])
@@ -129,7 +129,7 @@ class CurvedMirrorHorizontal(Component):
     """
     def __init__(self, name, position, normal, radius, n_elements=31, length=1, width=1):
         xyz, dxdydz = ft.curved_mirror(position, normal, radius, length, n_elements, True)
-        element_length = radius * 2 * np.arcsin(length / (2 * radius)) / n_elements
+        element_length = radius * 2 * np.arcsin(length / (2 * radius)) / (n_elements-1)
         elements = []
         for n in range(n_elements):
             element = Reflector(name + ': plate%d' % n, xyz[n], dxdydz[n], element_length, width, [0, 0, 1])
@@ -157,7 +157,7 @@ class KBMirror(Component):
 
         xyz1, dxdydz1 = ft.curved_mirror(pos1, dir1, radius, length, n_elements, True)
         xyz2, dxdydz2 = ft.curved_mirror(pos2, dir2, radius, length, n_elements, True)
-        element_length = radius * 2 * np.arcsin(length / (2 * radius)) / n_elements
+        element_length = radius * 2 * np.arcsin(length / (2 * radius)) / (n_elements-1)
         elements = []
         for n in range(n_elements):
             element = Reflector(name + ': vplate%d' % n, xyz1[n], dxdydz1[n], element_length, width, [0, 0, 1])

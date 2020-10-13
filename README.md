@@ -13,10 +13,9 @@ Diamond Light Source Ltd
 
 ### Usage:
 ```python
-import beamline_ray_tracer
-from beamline_ray_tracer import components
+from beamline_ray_tracer import Room, components
 # Create room (container for beams and optical elements)
-room = beamline_ray_tracer.Room('Optical Table')
+room = Room('Optical Table')
 room.generate_beams(n_beams=5)
 # Define optical components
 mirror1 = components.CurvedMirrorVertical('CyclindricalMirror', [0, 0, 0.5], [1, 0, 0], radius=2, n_elements=21, length=0.6, width=0.05)

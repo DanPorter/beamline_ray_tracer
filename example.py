@@ -1,5 +1,6 @@
 """
-Example RayTracer script
+Example beamline_ray_tracer script
+Create a room container and add some example components, then run and plot
 """
 
 import sys, os
@@ -15,7 +16,7 @@ beamline_ray_tracer.fg.nice_print()
 
 # Instantiate Optical Table (room)
 room = beamline_ray_tracer.Room('I16')
-room.generate_beams((0, 0, -2), (0, 0, 1), 0.05, 0.02, n_beams=3)
+room.generate_beams((0, 0, -2), (0, 0, 1), 0.05, 0.02, n_beams=7)
 
 # Create optical components
 mono = components.ChannelCutMono('Si111', [0, 0, -1.5], bragg=20, monogap=0.1, length=0.5, width=0.5)
@@ -67,5 +68,6 @@ plt.show()
 
 print('Distances')
 distances = room.beam_distances()
-for n, beam in enumerate(room.beams):
-    print(beam, beam.total_distance())
+plt.figure()
+plt.hist(distances, 30)
+plt.show()

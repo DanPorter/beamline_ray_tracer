@@ -141,7 +141,7 @@ class Room:
                 beam.extrude(1.0)
 
     def plot(self, axes=None):
-        """ Plot Beam path and Optical Elements """
+        """ Plot Beam path and Optical Elements in 3d """
         fig = plt.figure()
         ax = fig.add_subplot(111, projection='3d')
 
@@ -165,7 +165,7 @@ class Room:
         plt.show()
 
     def plot_projections(self):
-        """ Plot Beam path and Optical Elements """
+        """ Plot Beam path and Optical Elements as 2d projections """
         fig = plt.figure(figsize=[16, 8], dpi=60)
 
         #  x vs z

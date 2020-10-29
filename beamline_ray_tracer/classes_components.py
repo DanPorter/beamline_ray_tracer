@@ -29,7 +29,17 @@ class Component:
         self.rotation_centre = (0, 0, 0)
 
     def __repr__(self):
-        return "%s(%s with %d elements" % (self.component_type, self.name, len(self.elements))
+        return "%s(%s with %d elements)" % (self.component_type, self.name, len(self.elements))
+
+    def __str__(self):
+        out = '%s\n' % self.__repr__()
+        out += '\n'.join('  %s' % el.__repr__() for el in self.elements)
+        return out
+
+    def move(self, dxdydz):
+        """Move all element centres by (dx, dy, dz)"""
+        for element in self.elements:
+            element.move_by(dxdydz)
 
     def rotate(self, angle):
         for element in self.elements:
@@ -53,12 +63,48 @@ class DetectorArm(Component):
     A detector (Absorber) element rotating about a sample origin
     """
     def __init__(self, name, sample_position, delta=0, gamma=0, distance=1, length=1, width=1):
+        self.delta = delta
+        self.gamma = gamma
+        self.distance = distance
         direction = fg.you_normal_vector(0, -delta, 90-gamma)
         position = sample_position - distance * direction
         detector = Absorber(name, position, direction, length=length, width=width)
         super().__init__(name, [detector], 'Detector')
         self.rotation_centre = sample_position
         self.rotation_axis = [1, 0, 0]
+
+    def move(self, dxdydz):
+        """Move rotation_centre"""
+        position = np.asarray(self.rotation_centre, dtype=np.float).reshape(3)
+        dxdydz = np.asarray(dxdydz, dtype=np.float).reshape(3)
+        new_position = position + dxdydz
+        self.rotation_centre = new_position
+        for element in self.elements:
+            element.move_by(dxdydz)
+
+    def euler(self, delta=None, gamma=None):
+        """Change detector position using eulerian angles"""
+        if delta:
+            self.delta = delta
+        if gamma:
+            self.gamma = gamma
+        direction = fg.you_normal_vector(0, -self.delta, 90 - self.gamma)
+        position = self.rotation_centre - self.distance * direction
+        for element in self.elements:
+            element.move_to(position)
+            element.set_normal(direction)
+
+    def inc_euler(self, delta=None, gamma=None):
+        """Increase rotation in Eulerian coordinates"""
+        if delta:
+            self.delta += delta
+        if gamma:
+            self.gamma += gamma
+        direction = fg.you_normal_vector(0, -self.delta, 90 - self.gamma)
+        position = self.rotation_centre - self.distance * direction
+        for element in self.elements:
+            element.move_to(position)
+            element.set_normal(direction)
 
 
 class Sample(Component):
@@ -67,12 +113,57 @@ class Sample(Component):
     A Reflector element rotating about common diffractometer angles
     """
     def __init__(self, name, position, eta=0, chi=90, phi=0, mu=0, length=1, width=1):
+        self.eta = eta
+        self.chi = chi
+        self.phi = phi
+        self.mu = mu
         normal = fg.you_normal_vector(eta, chi, mu)
         crs = fg.rotate_about_axis(np.cross(normal, [0, 0, 1]), normal, phi)
         element = Reflector(name, position, normal, length=length, width=width, horizontal_direction=crs)
         super().__init__(name, [element], 'Sample')
         self.rotation_centre = position
         self.rotation_axis = crs
+
+    def move(self, dxdydz):
+        """Move centre and rotation_centre"""
+        position = np.asarray(self.rotation_centre, dtype=np.float).reshape(3)
+        dxdydz = np.asarray(dxdydz, dtype=np.float).reshape(3)
+        new_position = position + dxdydz
+        self.rotation_centre = new_position
+        for element in self.elements:
+            element.move_to(new_position)
+
+    def euler(self, eta=None, chi=None, phi=None, mu=None):
+        """Define element rotation in Eulerian coordinates"""
+        if eta:
+            self.eta = eta
+        if chi:
+            self.chi = chi
+        if phi:
+            self.phi = phi
+        if mu:
+            self.mu = mu
+        normal = fg.you_normal_vector(self.eta, self.chi, self.mu)
+        crs = fg.rotate_about_axis(np.cross(normal, [0, 0, 1]), normal, self.phi)
+        self.rotation_axis = crs
+        for element in self.elements:
+            element.set_normal(normal, crs)
+
+    def inc_euler(self, eta=None, chi=None, phi=None, mu=None):
+        """Increase rotation in Eulerian coordinates"""
+        if eta:
+            self.eta += eta
+        if chi:
+            self.chi += chi
+        if phi:
+            self.phi += phi
+        if mu:
+            self.mu += mu
+        normal = fg.you_normal_vector(self.eta, self.chi, self.mu)
+        crs = fg.rotate_about_axis(np.cross(normal, [0, 0, 1]), normal, self.phi)
+        self.rotation_axis = crs
+        for element in self.elements:
+            element.set_normal(normal, crs)
 
 
 class FlatMirror(Component):
@@ -142,6 +233,14 @@ class CurvedMirrorHorizontal(Component):
 class KBMirror(Component):
     """
     KB Mirrors - two curved mirrors in opposite directions
+    :param name: str : Component name
+    :param position: [x,y,z] : centre position of the mirror
+    :param beam_direction: [dx,dy,dz] : direction of incident beam
+    :param pitch: float : mirror pitch angle for focussing
+    :param radius: float : mirror radius
+    :param n_elements: int : number of mirror elements.
+    :param length: float : length of Component
+    :param width: float : width of Component
     """
     def __init__(self, name, position, beam_direction=(0, 0, 1), pitch=0, radius=1, n_elements=31, length=1, width=1):
         beam_direction = np.asarray(beam_direction, dtype=np.float)
@@ -174,11 +273,19 @@ class ChannelCutMono(Component):
     """
     ChannelCutMono Component
     Two parallel Reflectors that rotate about a common axis
+    :param name: str : Component name
+    :param position: [x,y,z] : centre position of the mirror
+    :param bragg: float : pitch angle defining scattering (Bragg) angle
+    :param monogap: float : distance between plates
+    :param d_space: float : diffraction d_space for calcualtion of Bragg angle (default Si (111))
+    :param length: float : length of Component
+    :param width: float : width of Component
     """
-    def __init__(self, name, position, bragg=0, monogap=0.1, length=1, width=1):
+    def __init__(self, name, position, bragg=0, monogap=0.1, d_space=3.1356, length=1, width=1):
         direction = np.array([0, 1, 0])
         position = np.asarray(position, dtype=np.float)
         self.bragg = bragg
+        self.d_space = d_space  # 5.431020511 / np.sqrt(3)  # Silicon (111)
 
         plate1 = Reflector(name + ': plate1', position, direction, length=length, width=width)
         plate2 = Reflector(name + ': plate2', position+[0, monogap, length/2], direction, length=length, width=width)
@@ -193,6 +300,20 @@ class ChannelCutMono(Component):
         angle_difference = angle_deg - self.bragg
         self.rotate(-angle_difference)
         self.bragg = angle_deg
+
+    def rotate_energy(self, energy_kev):
+        """Set the Bragg angle for a given energy in keV, assuming Si(111) reflection"""
+        # n*lambda = 2d sin theta
+        bragg = np.arcsin(6.19922 / (energy_kev * self.d_space))
+        bragg_deg = np.rad2deg(bragg)
+        self.rotate_bragg(bragg_deg)
+
+    def rotate_wavelength(self, wl_angstrom):
+        """Set the Bragg angle for a given wavelength in angstrom, assuming Si(111) reflection"""
+        # n*lambda = 2d sin theta
+        bragg = np.arcsin(wl_angstrom / (2 * self.d_space))
+        bragg_deg = np.rad2deg(bragg)
+        self.rotate_bragg(bragg_deg)
 
 
 class Slits(Component):

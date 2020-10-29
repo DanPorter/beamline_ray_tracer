@@ -29,11 +29,12 @@ By Dan Porter, PhD
 Diamond
 2020
 
-Version 0.1.0
-Last updated: 10/Oct/2020
+Version 0.2.0
+Last updated: 29/Oct/2020
 
 Version History:
 10/10/20 0.1.0  Version History started.
+29/10/20 0.2.0  Added diffractometer file and class
 """
 
 import sys, os
@@ -47,7 +48,10 @@ from . import classes_components as components
 from . import classes_elements as elements
 from .classes_room import Room
 from .classes_beam import Beam
+from .classes_diffractometer import Diffractometer
 
-__version__ = '0.1.0'
-__date__ = '12/Oct/2020'
+__version__ = '0.2.0'
+__date__ = '29/Oct/2020'
+
+
 

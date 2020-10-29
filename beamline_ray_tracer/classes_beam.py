@@ -22,6 +22,8 @@ class Beam:
     """
 
     def __init__(self, x=0, y=0, z=0, dx=0, dy=0, dz=1, beam_id=0):
+        self.x, self.y, self.z = x, y, z
+        self.dx, self.dy, self.dz = dx, dy, dz
         self.positions = [np.array([x, y, z], dtype=np.float)]
         direction = np.asarray([dx, dy, dz], dtype=np.float)
         self.direction = direction/np.sqrt(np.sum(np.square(direction)))
@@ -30,6 +32,12 @@ class Beam:
     def __repr__(self):
         current_pos, current_dir = self.current()
         return "Beam(%2d, pos: %s, dir: %s)" % (self.beam_id, current_pos, current_dir)
+
+    def reset(self):
+        """Reset Beam to original position & direction"""
+        self.positions = [np.array([self.x, self.y, self.z], dtype=np.float)]
+        direction = np.asarray([self.dx, self.dy, self.dz], dtype=np.float)
+        self.direction = direction / np.sqrt(np.sum(np.square(direction)))
 
     def xyz(self):
         """Return array of positions"""

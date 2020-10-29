@@ -13,6 +13,11 @@ from . import functions_general as fg
 from . import functions_tracer as ft
 
 
+# Matplotlib Figure parameters
+FIG_HEIGHT = 8
+FIG_DPI = 60
+
+
 class Window:
     """
     Optical Element Class: Window
@@ -21,7 +26,7 @@ class Window:
     :param normal: (dx,dy,dz) : direction
     :param length: float : length perpendicular to normal along rotation axis
     :param width: float : width perpendicular to normal and rotation axis
-    :param horizontal_direction:
+    :param horizontal_direction: (dx,dy,dz) : in-plane direction
     """
     _debug = True
 
@@ -42,9 +47,31 @@ class Window:
         out = 'Element(%s, position= %s, normal= %s)'
         return out % (self.name, list(self.position), list(self.normal))
 
+    def reset(self):
+        """Reset beam interactions on element"""
+        self.store_interactions = []
+
     def gen_shape(self):
+        """Generate element shape and vectors arrays"""
         self.shape = ft.plane_points(self.position, self.normal, self.length, self.width, self.horizontal_direction)
         self.vectors = ft.plane_vectors(self.normal, self.length, self.width, self.horizontal_direction)
+
+    def move_to(self, position):
+        """Change element centre to (x,y,z)"""
+        self.position = np.asarray(position, dtype=np.float).reshape(3)
+        self.gen_shape()
+
+    def move_by(self, dxdydz):
+        """Move element centre by (dx, dy, dz)"""
+        self.position += np.asarray(dxdydz, dtype=np.float).reshape(3)
+        self.gen_shape()
+
+    def set_normal(self, normal, horizontal_direction=None):
+        """Set normal direction to (dx, dy, dz)"""
+        self.normal = np.asarray(normal, dtype=np.float)/np.sqrt(np.sum(np.square(normal)))
+        if horizontal_direction is not None:
+            self.horizontal_direction = horizontal_direction
+        self.gen_shape()
 
     def rotate(self, angle, rotation_axis, rotation_centre):
         cen = np.asarray(rotation_centre, dtype=np.float)
@@ -87,9 +114,16 @@ class Window:
         position = np.asarray(position, dtype=np.float).reshape((-1, 3))
         return fg.index_coordinates(position - self.position, self.vectors)
 
+    def absolute_position(self, position):
+        """Return position on detector in distance, from centre"""
+        pos = self.relative_position(position)
+        pos[:, 0] = self.length * pos[:, 0]
+        pos[:, 1] = self.width * pos[:, 1]
+        return pos
+
     def plot_element(self):
         """Plot element in 3D"""
-        fig = plt.figure()
+        fig = plt.figure(figsize=[FIG_HEIGHT, FIG_HEIGHT], dpi=FIG_DPI)
         ax = fig.add_subplot(111, projection='3d')
 
         ax.plot(self.shape[:, 2], self.shape[:, 0], self.shape[:, 1], 'k-')
@@ -111,17 +145,24 @@ class Window:
         #ax.set_ylim([-1, 1])
         #ax.set_zlim([-1, 1])
 
-    def plot_detector_image(self):
+    def plot_detector_image(self, axes=None):
         """Plot detector image"""
-        plt.figure()
-        det = self.relative_position(self.shape)
-        pos = self.relative_position(np.array(self.store_interactions))
-        plt.plot(self.length * det[:, 0], self.width * det[:, 1], 'k-', lw=2)
-        plt.plot(self.length * pos[:, 0], self.width * pos[:, 1], 'rx', ms=12)
-        plt.axis('image')
-        plt.xlabel('Detector length')
-        plt.ylabel('Detector width')
-        plt.title('Absorber: %s' % self.name)
+        if axes is None:
+            plt.figure(figsize=[FIG_HEIGHT, FIG_HEIGHT], dpi=FIG_DPI)
+            ax = plt.subplot(111)
+        else:
+            ax = axes
+
+        det = self.absolute_position(self.shape)
+        pos = self.absolute_position(self.store_interactions)
+        ax.plot(det[:, 0], det[:, 1], 'k-', lw=2)
+        ax.plot(pos[:, 0], pos[:, 1], 'rx', ms=12)
+
+        if axes is None:
+            ax.axis('image')
+            ax.set_xlabel('Detector length')
+            ax.set_ylabel('Detector width')
+            ax.set_title('Absorber: %s' % self.name)
 
 
 class Absorber(Window):

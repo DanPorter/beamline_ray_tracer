@@ -7,7 +7,7 @@ Room Class
 import numpy as np
 import matplotlib.pyplot as plt
 
-from .classes_elements import Reflector, Absorber
+from .classes_elements import Reflector, Absorber, FIG_HEIGHT, FIG_DPI
 from .classes_beam import Beam
 from .functions_tracer import plane_vectors
 
@@ -102,6 +102,13 @@ class Room:
                 return el
         return None
 
+    def reset(self):
+        """Reset beams"""
+        for beam in self.beams:
+            beam.reset()
+        for element in self.elements:
+            element.reset()
+
     def run(self, debug=False):
         """Run the Ray tracing program"""
 
@@ -114,6 +121,8 @@ class Room:
 
         if debug:
             print('\nRunning Ray Tracing for %s' % self.__repr__())
+
+        self.reset()
 
         for beam in self.beams:
             if debug:
@@ -142,8 +151,11 @@ class Room:
 
     def plot(self, axes=None):
         """ Plot Beam path and Optical Elements in 3d """
-        fig = plt.figure()
-        ax = fig.add_subplot(111, projection='3d')
+        if axes is None:
+            fig = plt.figure(figsize=[FIG_HEIGHT, FIG_HEIGHT], dpi=FIG_DPI)
+            ax = fig.add_subplot(111, projection='3d')
+        else:
+            ax = axes
 
         for element in self.elements:
             ax.plot(element.shape[:, 2], element.shape[:, 0], element.shape[:, 1], 'k-')
@@ -156,17 +168,18 @@ class Room:
             pos = beam.xyz()
             ax.plot(pos[:, 2], pos[:, 0], pos[:, 1], 'b-o', lw=2, ms=4)
 
-        ax.set_xlabel('z')
-        ax.set_ylabel('x')
-        ax.set_zlabel('y')
-        ax.set_xlim([-2, 2])
-        ax.set_ylim([-2, 2])
-        ax.set_zlim([-2, 2])
-        plt.show()
+        if axes is None:
+            ax.set_xlabel('z')
+            ax.set_ylabel('x')
+            ax.set_zlabel('y')
+            ax.set_xlim([-2, 2])
+            ax.set_ylim([-2, 2])
+            ax.set_zlim([-2, 2])
+            plt.show()
 
     def plot_projections(self):
         """ Plot Beam path and Optical Elements as 2d projections """
-        fig = plt.figure(figsize=[16, 8], dpi=60)
+        fig = plt.figure(figsize=[2 * FIG_HEIGHT, FIG_HEIGHT], dpi=FIG_DPI)
 
         #  x vs z
         ax = fig.add_subplot(131)
@@ -199,10 +212,9 @@ class Room:
         ax.set_ylabel('y')
         plt.show()
 
-    def plot_detector(self):
+    def plot_detector(self, axes=None):
         """Plot beam positions on final optical element"""
-        self.elements[-1].plot_detector_image()
-        plt.show()
+        self.elements[-1].plot_detector_image(axes)
 
     def beam_distances(self):
         """Calculate beam path distances"""

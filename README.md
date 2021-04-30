@@ -12,6 +12,7 @@ Diamond Light Source Ltd
 2020
 
 ### Usage:
+An example notebook is available on [Google Colab](https://colab.research.google.com/drive/1U5WyTTbhX-tUNpUqSKB8Gp5OqqYUBohr?usp=sharing).
 ```python
 from beamline_ray_tracer import Room, components
 

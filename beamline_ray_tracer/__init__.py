@@ -25,6 +25,8 @@ As python script:
  room.plot()
  plt.show()
 
+# Further examples here: https://colab.research.google.com/drive/1U5WyTTbhX-tUNpUqSKB8Gp5OqqYUBohr?usp=sharing
+
 By Dan Porter, PhD
 Diamond
 2020

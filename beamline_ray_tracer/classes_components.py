@@ -7,10 +7,11 @@ beamline_ray_tracer classes
 """
 
 import numpy as np
+import matplotlib.pyplot as plt
 
 from . import functions_general as fg
 from . import functions_tracer as ft
-from .classes_elements import Window, Absorber, Reflector
+from .classes_elements import Window, Absorber, Reflector, CylindricalReflector, FIG_HEIGHT, FIG_DPI
 
 
 class Component:
@@ -36,6 +37,14 @@ class Component:
         out += '\n'.join('  %s' % el.__repr__() for el in self.elements)
         return out
 
+    def __getitem__(self, item):
+        return self.elements[item]
+
+    def debug(self, db=True):
+        """Set debug mode on all elements"""
+        for el in self.elements:
+            el.debug(db)
+
     def move(self, dxdydz):
         """Move all element centres by (dx, dy, dz)"""
         for element in self.elements:
@@ -44,6 +53,68 @@ class Component:
     def rotate(self, angle):
         for element in self.elements:
             element.rotate(angle, self.rotation_axis, self.rotation_centre)
+
+    def plot(self, axes=None):
+        """ Plot Beam path and Optical Elements in 3d """
+        if axes is None:
+            fig = plt.figure(figsize=[FIG_HEIGHT, FIG_HEIGHT], dpi=FIG_DPI)
+            ax = fig.add_subplot(111, projection='3d')
+        else:
+            ax = axes
+
+        for element in self.elements:
+            ax.plot(element.shape[:, 2], element.shape[:, 0], element.shape[:, 1], 'k-')
+            #ax.plot([element.position[2], element.position[2]+element.normal[2]],
+            #        [element.position[0], element.position[0] + element.normal[0]],
+            #        [element.position[1], element.position[1] + element.normal[1]],
+            #        'k-', lw=0.5)
+
+            for n in range(len(element.store_interactions)):
+                pos = [np.asarray(element.store_interactions[n]) - np.asarray(element.store_incident[n]),
+                       np.asarray(element.store_interactions[n]),
+                       np.asarray(element.store_interactions[n]) + np.asarray(element.store_scattered[n])]
+                pos = np.array(pos)
+                ax.plot(pos[:, 2], pos[:, 0], pos[:, 1], 'r-+', lw=1)
+
+        if axes is None:
+            ax.set_xlabel('z')
+            ax.set_ylabel('x')
+            ax.set_zlabel('y')
+            ax.set_title(self.name)
+            #ax.set_xlim([-1, 1])
+            #ax.set_ylim([-1, 1])
+            #ax.set_zlim([-1, 1])
+            plt.show()
+
+    def plot_projections(self, image=False):
+        """ Plot Beam path and Optical Elements as 2d projections """
+        fig, [ax1, ax2, ax3] = plt.subplots(1, 3, figsize=[2 * FIG_HEIGHT, FIG_HEIGHT], dpi=FIG_DPI)
+        plt.suptitle('%r' % self)
+        #  x vs z
+        for element in self.elements:
+            ax1.plot(element.shape[:, 0], element.shape[:, 2], 'k-')
+            ax2.plot(element.shape[:, 1], element.shape[:, 2], 'k-')
+            ax3.plot(element.shape[:, 0], element.shape[:, 1], 'k-')
+
+            for n in range(len(element.store_interactions)):
+                pos = np.array([
+                    np.asarray(element.store_interactions[n]) - 2 * np.asarray(element.store_incident[n]),
+                    np.asarray(element.store_interactions[n]),
+                    np.asarray(element.store_interactions[n]) + 2 * np.asarray(element.store_scattered[n])
+                ])
+                ax1.plot(pos[:, 0], pos[:, 2], 'r-+', lw=1)
+                ax2.plot(pos[:, 1], pos[:, 2], 'r-+', lw=1)
+                ax3.plot(pos[:, 0], pos[:, 1], 'r-+', lw=1)
+        ax1.set_xlabel('x')
+        ax1.set_ylabel('z')
+        ax2.set_xlabel('y')
+        ax2.set_ylabel('z')
+        ax3.set_xlabel('x')
+        ax3.set_ylabel('y')
+        if image:
+            ax1.axis('image')
+            ax2.axis('image')
+            ax3.axis('image')
 
 
 class Detector(Component):
@@ -57,115 +128,6 @@ class Detector(Component):
         self.rotation_centre = position
 
 
-class DetectorArm(Component):
-    """
-    DetectorArm Component
-    A detector (Absorber) element rotating about a sample origin
-    """
-    def __init__(self, name, sample_position, delta=0, gamma=0, distance=1, length=1, width=1):
-        self.delta = delta
-        self.gamma = gamma
-        self.distance = distance
-        direction = fg.you_normal_vector(0, -delta, 90-gamma)
-        position = sample_position - distance * direction
-        detector = Absorber(name, position, direction, length=length, width=width)
-        super().__init__(name, [detector], 'Detector')
-        self.rotation_centre = sample_position
-        self.rotation_axis = [1, 0, 0]
-
-    def move(self, dxdydz):
-        """Move rotation_centre"""
-        position = np.asarray(self.rotation_centre, dtype=np.float).reshape(3)
-        dxdydz = np.asarray(dxdydz, dtype=np.float).reshape(3)
-        new_position = position + dxdydz
-        self.rotation_centre = new_position
-        for element in self.elements:
-            element.move_by(dxdydz)
-
-    def euler(self, delta=None, gamma=None):
-        """Change detector position using eulerian angles"""
-        if delta:
-            self.delta = delta
-        if gamma:
-            self.gamma = gamma
-        direction = fg.you_normal_vector(0, -self.delta, 90 - self.gamma)
-        position = self.rotation_centre - self.distance * direction
-        for element in self.elements:
-            element.move_to(position)
-            element.set_normal(direction)
-
-    def inc_euler(self, delta=None, gamma=None):
-        """Increase rotation in Eulerian coordinates"""
-        if delta:
-            self.delta += delta
-        if gamma:
-            self.gamma += gamma
-        direction = fg.you_normal_vector(0, -self.delta, 90 - self.gamma)
-        position = self.rotation_centre - self.distance * direction
-        for element in self.elements:
-            element.move_to(position)
-            element.set_normal(direction)
-
-
-class Sample(Component):
-    """
-    Sample Component
-    A Reflector element rotating about common diffractometer angles
-    """
-    def __init__(self, name, position, eta=0, chi=90, phi=0, mu=0, length=1, width=1):
-        self.eta = eta
-        self.chi = chi
-        self.phi = phi
-        self.mu = mu
-        normal = fg.you_normal_vector(eta, chi, mu)
-        crs = fg.rotate_about_axis(np.cross(normal, [0, 0, 1]), normal, phi)
-        element = Reflector(name, position, normal, length=length, width=width, horizontal_direction=crs)
-        super().__init__(name, [element], 'Sample')
-        self.rotation_centre = position
-        self.rotation_axis = crs
-
-    def move(self, dxdydz):
-        """Move centre and rotation_centre"""
-        position = np.asarray(self.rotation_centre, dtype=np.float).reshape(3)
-        dxdydz = np.asarray(dxdydz, dtype=np.float).reshape(3)
-        new_position = position + dxdydz
-        self.rotation_centre = new_position
-        for element in self.elements:
-            element.move_to(new_position)
-
-    def euler(self, eta=None, chi=None, phi=None, mu=None):
-        """Define element rotation in Eulerian coordinates"""
-        if eta:
-            self.eta = eta
-        if chi:
-            self.chi = chi
-        if phi:
-            self.phi = phi
-        if mu:
-            self.mu = mu
-        normal = fg.you_normal_vector(self.eta, self.chi, self.mu)
-        crs = fg.rotate_about_axis(np.cross(normal, [0, 0, 1]), normal, self.phi)
-        self.rotation_axis = crs
-        for element in self.elements:
-            element.set_normal(normal, crs)
-
-    def inc_euler(self, eta=None, chi=None, phi=None, mu=None):
-        """Increase rotation in Eulerian coordinates"""
-        if eta:
-            self.eta += eta
-        if chi:
-            self.chi += chi
-        if phi:
-            self.phi += phi
-        if mu:
-            self.mu += mu
-        normal = fg.you_normal_vector(self.eta, self.chi, self.mu)
-        crs = fg.rotate_about_axis(np.cross(normal, [0, 0, 1]), normal, self.phi)
-        self.rotation_axis = crs
-        for element in self.elements:
-            element.set_normal(normal, crs)
-
-
 class FlatMirror(Component):
     """
     Flat Mirror Component
@@ -176,10 +138,12 @@ class FlatMirror(Component):
     """
     def __init__(self, name, position, normal, pitch, length=1, width=1):
         # Rotate towards z
-        crs = np.cross(normal, [0, 0, 1])
+        crs = np.cross(normal, [0, 0, 1])  # pitch will rotate about the [1,0,0] axis
+        if fg.mag(crs) < 0.1:
+            crs = np.cross(normal, [1, 0, 0]) # pitch will rotate about the [0,0,1] axis
         direction = fg.rotate_about_axis(normal, crs, pitch)
         element = Reflector(name, position, direction, length=length, width=width)
-        super(FlatMirror, self).__init__(name, [element], 'Mirror')
+        super().__init__(name, [element], 'Mirror')
         self.rotation_centre = position
         self.rotation_axis = crs
 
@@ -192,19 +156,59 @@ class CurvedMirrorVertical(Component):
     :param normal: [dx,dy,dz] : nominal normal vector of the mirror
     :param radius: float : radius of curvature
     :param n_elements: int : number of elements generated
-    :param length: float : length of Component
-    :param width: float : width of Component
+    :param length: float : length of Component (along beam direction)
+    :param width: float : width of Component (perpendicular to beam direction and normal)
     """
     def __init__(self, name, position, normal, radius, n_elements=31, length=1, width=1):
+        self.position = np.asarray(position, dtype=np.float).reshape(3)
+        self.normal = np.asarray(normal, dtype=np.float).reshape(3)
+        self.radius = radius
+        self.curve_size = width
         xyz, dxdydz = ft.curved_mirror(position, normal, radius, width, n_elements, False)
         element_width = radius * 2 * np.arcsin(width / (2 * radius)) / (n_elements-1)
         elements = []
         for n in range(n_elements):
-            element = Reflector(name + ': plate%d' % n, xyz[n], dxdydz[n], element_width, length, [0, 1, 0])
+            #element = Reflector(name + ': plate%d' % n, xyz[n], dxdydz[n], element_width, length, [0, 1, 0])
+            element = CylindricalReflector(name + ': plate%d' % n, xyz[n], -dxdydz[n], element_width, length,
+                                           horizontal_direction=[0, 1, 0], radius=radius)
+
             elements += [element]
         super().__init__(name, elements, 'Mirror')
         self.rotation_centre = position
         self.rotation_axis = (0, 1, 0)
+
+    def move(self, dxdydz):
+        self.position += np.asarray(dxdydz, dtype=np.float).reshape(3)
+        super().move(dxdydz)
+
+    def rotate(self, angle):
+        self.normal = fg.rotate_about_axis(self.normal, self.rotation_axis, angle)
+        super().rotate(angle)
+
+    def element_size(self, radius=None):
+        """Returns the width of an individual mirror element along the axis of curvature"""
+        if radius is None:
+            radius = self.radius
+        n_elements = len(self.elements)
+        return radius * 2 * np.arcsin(self.curve_size / (2 * radius)) / (n_elements - 1)
+
+    def max_angle_error(self):
+        """Returns the maximum angular deviation given the number of elements used"""
+        return np.rad2deg(np.arctan(self.element_size()/(2*self.radius)))
+
+    def max_distance_error(self):
+        """Returns the maximum distance deviation given the number of elements used"""
+        return np.sqrt((self.element_size()/2)**2 + self.radius**2) - self.radius
+
+    def change_radius(self, radius):
+        """Move + rotate plates to change mirror radius"""
+        n_elements = len(self.elements)
+        xyz, dxdydz = ft.curved_mirror(self.position, self.normal, radius, self.curve_size, n_elements, False)
+        element_width = radius * 2 * np.arcsin(self.curve_size / (2 * radius)) / (n_elements - 1)
+        for n, element in enumerate(self.elements):
+            element.width = element_width
+            element.move_to(xyz[n, :])
+            element.set_normal(dxdydz[n, :])
 
 
 class CurvedMirrorHorizontal(Component):
@@ -213,21 +217,119 @@ class CurvedMirrorHorizontal(Component):
     :param name: str : Component name
     :param position: [x,y,z] : centre position of the mirror
     :param normal: [dx,dy,dz] : nominal normal vector of the mirror
-    :param radius: float : radius of curvature
+    :param radius: float : radius of curvature (curve in the plane of beam direction and normal)
     :param n_elements: int : number of elements generated
-    :param length: float : length of Component
-    :param width: float : width of Component
+    :param length: float : length of Component (along beam direction)
+    :param width: float : width of Component (perpendicular to beam direction and normal)
     """
     def __init__(self, name, position, normal, radius, n_elements=31, length=1, width=1):
+        self.position = np.asarray(position, dtype=np.float).reshape(3)
+        self.normal = np.asarray(normal, dtype=np.float).reshape(3)
+        self.radius = radius
+        self.curve_size = length
         xyz, dxdydz = ft.curved_mirror(position, normal, radius, length, n_elements, True)
+        self.focal_position = xyz[0] + radius*dxdydz[0]
         element_length = radius * 2 * np.arcsin(length / (2 * radius)) / (n_elements-1)
         elements = []
         for n in range(n_elements):
-            element = Reflector(name + ': plate%d' % n, xyz[n], dxdydz[n], element_length, width, [0, 0, 1])
+            #element = Reflector(name + ': plate%d' % n, xyz[n], dxdydz[n], element_length, width, [0, 0, 1])
+            element = CylindricalReflector(name + ': plate%d' % n, xyz[n], -dxdydz[n], element_length, width, [1, 0, 0],
+                                           radius=radius)
             elements += [element]
         super().__init__(name, elements, 'Mirror')
         self.rotation_centre = position
         self.rotation_axis = (0, 1, 0)
+
+    def move(self, dxdydz):
+        self.position += np.asarray(dxdydz, dtype=np.float).reshape(3)
+        super().move(dxdydz)
+
+    def rotate(self, angle):
+        self.normal = fg.rotate_about_axis(self.normal, self.rotation_axis, angle)
+        super().rotate(angle)
+
+    def element_size(self, radius=None):
+        """Returns the width of an individual mirror element along the axis of curvature"""
+        if radius is None:
+            radius = self.radius
+        n_elements = len(self.elements)
+        return radius * 2 * np.arcsin(self.curve_size / (2 * radius)) / (n_elements - 1)
+
+    def max_angle_error(self):
+        """Returns the maximum angular deviation given the number of elements used"""
+        return np.rad2deg(np.arctan(self.element_size() / (2 * self.radius)))
+
+    def max_distance_error(self):
+        """Returns the maximum distance deviation given the number of elements used"""
+        return np.sqrt((self.element_size() / 2) ** 2 + self.radius ** 2) - self.radius
+
+    def change_radius(self, radius):
+        """Move + rotate plates to change mirror radius"""
+        n_elements = len(self.elements)
+        xyz, dxdydz = ft.curved_mirror(self.position, self.normal, radius, self.curve_size, n_elements, True)
+        element_length = radius * 2 * np.arcsin(self.curve_size / (2 * radius)) / (n_elements-1)
+        for n, element in enumerate(self.elements):
+            element.width = element_length
+            element.move_to(xyz[n, :])
+            element.set_normal(dxdydz[n, :])
+
+
+class MirrorSystem(Component):
+    """
+    Double Mirror system
+    Fixed focus vertical cyclindrical primary mirror followed by variable radius horizontally horizontal mirror (bender)
+    Vertical focus is controlled by the matched mirror pitch, horizontal focus is controlled by the radius of the
+    bender.
+    """
+    def __init__(self, name, position, pitch=0, m1m2distance=1, m1_radius=0.01, m2_radius=1000,
+                 n_elements=31, length=1, width=1):
+        self.pitch = pitch
+        self.m1m2distance = m1m2distance  # Mirror separation parallel to beam
+        self.m1_position = np.asarray(position, dtype=np.float).reshape(3)
+        self.m1_radius = m1_radius  # sagittal (vertical)
+        self.m2_radius = m2_radius  # meridonal (horizontal)
+
+        normal = np.asarray((1, 0, 0), dtype=np.float)
+        parallel = np.asarray((0, 0, 1), dtype=np.float)
+        self.normal = normal
+        self.parallel = parallel
+        separation = m1m2distance * np.tan(2 * np.deg2rad(pitch))  # mirror separation perpendicular to beam
+        self.m2_position = self.m1_position + m1m2distance * parallel + separation * normal
+
+        self.m1 = CurvedMirrorVertical('Cyclindrical', position, normal, radius=m1_radius, n_elements=n_elements,
+                                       length=length, width=width)
+        self.m2 = CurvedMirrorHorizontal('Bender', self.m2_position, -normal, radius=m2_radius, n_elements=n_elements,
+                                         length=length, width=width)
+        self.m1.rotate(pitch)
+        self.m2.rotate(pitch)
+        super().__init__(name, self.m1.elements + self.m2.elements, 'Mirror')
+        self.rotation_centre = position
+        self.rotation_axis = (0, 1, 0)
+
+    def focal_lengths(self):
+        """Calculate focal distances from m1 and m2, distance returned from m1 position"""
+        vertical_focus = ft.sagittal_focal_length(self.pitch, self.m1_radius)
+        horizontal_focus = ft.meridonal_focal_length(self.pitch, self.m2_radius)
+        # add distance between mirrors
+        horizontal_focus += self.m1m2distance
+        # Technically I should also subtract a little from vertical
+        return vertical_focus, horizontal_focus
+
+    def change_pitch(self, pitch):
+        """Alter the pitch of both mirrors"""
+        self.m1.rotate(pitch - self.pitch)
+        self.m2.rotate(pitch - self.pitch)
+        separation = self.m1m2distance * np.tan(2 * np.deg2rad(pitch))  # mirror separation perpendicular to beam
+        old_position = self.m2_position
+        new_position = self.m1_position + self.m1m2distance * self.parallel + separation * self.normal
+        difference = new_position - old_position
+        self.m2.move(difference)
+        self.pitch = pitch
+        self.m2_position = new_position
+
+    def change_bender(self, radius):
+        """Change m2 horizontal radius"""
+        self.m2.change_radius(radius)
 
 
 class KBMirror(Component):

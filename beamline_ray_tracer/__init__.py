@@ -29,12 +29,13 @@ By Dan Porter, PhD
 Diamond
 2020
 
-Version 0.2.0
-Last updated: 29/Oct/2020
+Version 0.5.0
+Last updated: 30/Apr/2021
 
 Version History:
 10/10/20 0.1.0  Version History started.
 29/10/20 0.2.0  Added diffractometer file and class
+30/04/21 0.5.0  Many improvements, CyclindricalMirror element added and tested
 """
 
 import sys, os
@@ -50,8 +51,8 @@ from .classes_room import Room
 from .classes_beam import Beam
 from .classes_diffractometer import Diffractometer
 
-__version__ = '0.2.0'
-__date__ = '29/Oct/2020'
+__version__ = '0.5.0'
+__date__ = '30/Apr/2021'
 
 
 

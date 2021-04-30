@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from .classes_elements import Reflector, Absorber, FIG_HEIGHT, FIG_DPI
 from .classes_beam import Beam
 from .functions_tracer import plane_vectors
+from . import functions_general as fg
 
 
 class Room:
@@ -23,6 +24,7 @@ class Room:
       room.plot()
     """
     _MAX_ITER = 100
+    _EXTRUDE = 1.0
 
     def __init__(self, name):
         self.name = name
@@ -39,6 +41,19 @@ class Room:
         out += '\nElements:\n'
         out += '\n'.join('%r' % el for el in self.elements)
         return out
+
+    def debug(self, db=True):
+        """
+        Set debug mode on all elements
+        """
+        for el in self.elements:
+            el.debug(db)
+
+    def extrude_length(self, value=None):
+        """Set the extrude length for reflected beams"""
+        if value is None:
+            return self._EXTRUDE
+        self._EXTRUDE = value
 
     def add_beam(self, position=(0, 0, 0), direction=(0, 0, 1)):
         """Add beam at given position in given direction"""
@@ -127,27 +142,85 @@ class Room:
         for beam in self.beams:
             if debug:
                 print('\n---Beam %d---' % beam.beam_id)
+            # beam = self._recursive_beampath(beam, 0, debug)
             element = self.next_element(beam)
             iter_number = 0
             while element is not None and iter_number < self._MAX_ITER:
                 iter_number += 1
                 current_pos, current_dir = beam.current()
-                if current_dir is None: break
+                if current_dir is None: break  # beam has stopped
 
-                new_pos, new_dir = element.beam_incident(current_pos, current_dir)
+                new_pos, new_dirs = element.beam_incident(current_pos, current_dir)
                 if new_pos is None: break
-                if debug:
-                    print('%r' % element)
-                    print('   current beam: %r' % beam)
-                beam.new(new_pos, new_dir)
-                if debug:
-                    print(' reflected beam:%r\n' % beam)
-                element = self.next_element(beam, element)
-                if debug:
-                    print('Next element: %r\n' % element)
+                for new_dir in new_dirs[:1]:  # Multiple scattered beams not implemented yet.
+                    if debug:
+                        print('%r' % element)
+                        print('   current beam: %r' % beam)
+                    beam.new(new_pos, new_dir)
+                    if debug:
+                        print(' reflected beam:%r\n' % beam)
+                    element = self.next_element(beam, element)
+                    if debug:
+                        print('Next element: %r\n' % element)
             # If no element, continue beam for a while
             if beam.direction is not None:
-                beam.extrude(1.0)
+                beam.extrude(self._EXTRUDE)
+
+    def _recursive_beampath(self, beam, iter_number, debug=False):
+        """
+        Recursive search for elements
+          For use with multiple scattered beams, however this is not yet implemented.
+          The problem is that a Beam object currently creates a single list of points
+          Recursivly iterating over scattered beams will add additional points in the correct order, but
+          won't allow different properties for e.g. reflected and transmitted beams.
+          Probably the solution is to define a BeamElement object and have this returned by element.beam_incident
+        """
+
+        if iter_number > self._MAX_ITER:
+            return beam
+        current_pos, current_dir = beam.current()
+        if current_dir is None:
+            # beam has stopped
+            return beam
+
+        # Find next element along beam path
+        element = self.next_element(beam)
+
+        new_pos, new_dirs = element.beam_incident(current_pos, current_dir)
+        if new_pos is None:
+            return beam
+        for new_dir in new_dirs:
+            if debug:
+                print('%r' % element)
+                print('   current beam: %r' % beam)
+            beam.new(new_pos, new_dir)
+            if debug:
+                print(' reflected beam:%r\n' % beam)
+            beam = self._recursive_beampath(beam, iter_number+1, debug)
+        return beam
+
+    def beam_distances(self):
+        """Calculate beam path distances"""
+        dist = np.zeros(len(self.beams))
+        for n, beam in enumerate(self.beams):
+            dist[n] = beam.total_distance()
+        return dist
+
+    def beam_intersections(self):
+        """Generate list of beam intersections"""
+
+        intersect = []
+        for n in range(len(self.beams)):
+            beam = self.beams[n]
+            # final positions only
+            current_pos, current_dir = beam.current()
+            for nbeam in self.beams[n+1:]:
+                npos, ndir = nbeam.current()
+                p1, p2, dist = fg.vector_shortest(current_pos, current_dir, npos, ndir)
+                if dist < 1e-6:
+                    intersect += [(p1 + p2)/2]
+                    #print('Intersect: %3d, %3d dist=%.6f' % (beam.beam_id, nbeam.beam_id, dist))
+        return np.array(intersect)
 
     def plot(self, axes=None):
         """ Plot Beam path and Optical Elements in 3d """
@@ -175,11 +248,13 @@ class Room:
             ax.set_xlim([-2, 2])
             ax.set_ylim([-2, 2])
             ax.set_zlim([-2, 2])
+            ax.set_title('%r' % self)
             plt.show()
 
-    def plot_projections(self):
+    def plot_projections(self, image_axes=True):
         """ Plot Beam path and Optical Elements as 2d projections """
         fig = plt.figure(figsize=[2 * FIG_HEIGHT, FIG_HEIGHT], dpi=FIG_DPI)
+        fig.suptitle('%r' % self)
 
         #  x vs z
         ax = fig.add_subplot(131)
@@ -187,9 +262,10 @@ class Room:
             ax.plot(element.shape[:, 0], element.shape[:, 2], 'k-')
         for beam in self.beams:
             pos = beam.xyz()
-            ax.plot(pos[:, 0], pos[:, 2], 'b-o', lw=2, ms=4)
+            ax.plot(pos[:, 0], pos[:, 2], '-o', lw=2, ms=4)
         ax.set_xlabel('x')
         ax.set_ylabel('z')
+        if image_axes: ax.axis('image')
 
         #  y vs z
         ax = fig.add_subplot(132)
@@ -197,9 +273,10 @@ class Room:
             ax.plot(element.shape[:, 1], element.shape[:, 2], 'k-')
         for beam in self.beams:
             pos = beam.xyz()
-            ax.plot(pos[:, 1], pos[:, 2], 'b-o', lw=2, ms=4)
+            ax.plot(pos[:, 1], pos[:, 2], '-o', lw=2, ms=4)
         ax.set_xlabel('y')
         ax.set_ylabel('z')
+        if image_axes: ax.axis('image')
 
         #  x vs y
         ax = fig.add_subplot(133)
@@ -207,18 +284,14 @@ class Room:
             ax.plot(element.shape[:, 0], element.shape[:, 1], 'k-')
         for beam in self.beams:
             pos = beam.xyz()
-            ax.plot(pos[:, 0], pos[:, 1], 'b-o', lw=2, ms=4)
+            ax.plot(pos[:, 0], pos[:, 1], '-o', lw=2, ms=4)
         ax.set_xlabel('x')
         ax.set_ylabel('y')
+        if image_axes: ax.axis('image')
         plt.show()
 
     def plot_detector(self, axes=None):
         """Plot beam positions on final optical element"""
         self.elements[-1].plot_detector_image(axes)
+        plt.show()
 
-    def beam_distances(self):
-        """Calculate beam path distances"""
-        dist = np.zeros(len(self.beams))
-        for n, beam in enumerate(self.beams):
-            dist[n] = beam.total_distance()
-        return dist
